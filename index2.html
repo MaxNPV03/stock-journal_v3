@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>대화형 주식매매일지</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            background-color: #F8F7F4; /* Warm neutral background */
+            color: #4A4A4A;
+        }
+        .card {
+            background-color: #FFFFFF;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        }
+        .card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+        .btn {
+            background-color: #4A90E2; /* Calm blue */
+            color: white;
+            font-weight: bold;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            transition: background-color 0.2s ease-in-out;
+        }
+        .btn:hover {
+            background-color: #357ABD;
+        }
+        .btn-danger {
+            background-color: #D0021B; /* Subtle red */
+        }
+        .btn-danger:hover {
+            background-color: #A50115;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+        input[type="number"], input[type="text"], input[type="date"], select {
+            border: 1px solid #D1D5DB;
+            border-radius: 0.375rem;
+            padding: 0.5rem;
+            width: 100%;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #E5E7EB;
+        }
+        th {
+            background-color: #F3F4F6;
+            font-weight: 600;
+        }
+        .positive { color: #2E8B57; } /* Sea green */
+        .negative { color: #C0392B; } /* Pomegranate */
+    </style>
+</head>
+<body class="p-4 sm:p-6 md:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">대화형 주식매매일지</h1>
+            <p class="text-gray-600">거래 내역을 기록하고 투자 현황을 실시간으로 분석하세요.</p>
+        </header>
+
+        <main>
+            <section id="summary-section" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div class="card p-6">
+                    <h3 class="text-lg font-semibold text-gray-500">총 손익 합계 (KRW)</h3>
+                    <p id="total-pl" class="text-3xl font-bold mt-2">0원</p>
+                </div>
+                <div class="card p-6">
+                    <h3 class="text-lg font-semibold text-gray-500">총 실현손익 (KRW)</h3>
+                    <p id="total-realized-pl" class="text-3xl font-bold mt-2">0원</p>
+                </div>
+                <div class="card p-6">
+                    <h3 class="text-lg font-semibold text-gray-500">총 평가손익 (KRW)</h3>
+                    <p id="total-unrealized-pl" class="text-3xl font-bold mt-2">0원</p>
+                </div>
+            </section>
+
+            <section class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                <div class="card p-6">
+                    <h2 class="text-xl font-bold mb-4">📈 포트폴리오 현황</h2>
+                     <p class="text-sm text-gray-500 mb-4">
+                        현재 보유 중인 종목의 현황입니다. '현재가'와 '현재 환율'을 입력하면 평가손익이 실시간으로 업데이트됩니다.
+                    </p>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full text-sm">
+                            <thead>
+                                <tr>
+                                    <th>종목명</th>
+                                    <th>보유수량</th>
+                                    <th>평균매수가</th>
+                                    <th>통화</th>
+                                    <th>평균 환율</th>
+                                    <th>현재가</th>
+                                    <th>현재 환율</th>
+                                    <th>평가손익 (KRW)</th>
+                                    <th>수익률(%)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="portfolio-body">
+                                </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="space-y-8">
+                    <div class="card p-6">
+                        <h2 class="text-xl font-bold mb-4">📊 누적 실현손익 추이</h2>
+                        <p class="text-sm text-gray-500 mb-4">
+                        매매를 통해 확정된 손익의 누적 변화를 보여주는 차트입니다.
+                        </p>
+                        <div class="chart-container">
+                            <canvas id="cumulativePLChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="card p-6">
+                        <h2 class="text-xl font-bold mb-4">🥧 포트폴리오 구성</h2>
+                        <p class="text-sm text-gray-500 mb-4">
+                        현재 보유 자산의 종목별 비중(평가금액 기준)을 보여줍니다.
+                        </p>
+                        <div class="chart-container">
+                            <canvas id="portfolioDonutChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card p-6 mb-8">
+                <h2 class="text-xl font-bold mb-4">✍️ 거래 내역 추가</h2>
+                <p class="text-sm text-gray-500 mb-4">
+                    새로운 매수 또는 매도 거래를 아래 양식에 입력하세요. 입력 즉시 모든 정보가 업데이트됩니다.
+                </p>
+                <form id="transaction-form" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-7 gap-4 items-end">
+                    <div class="lg:col-span-1">
+                        <label for="tx-date" class="block text-sm font-medium">거래일</label>
+                        <input type="date" id="tx-date" required>
+                    </div>
+                    <div class="lg:col-span-1">
+                        <label for="tx-name" class="block text-sm font-medium">종목명</label>
+                        <input type="text" id="tx-name" required placeholder="예: 삼성전자">
+                    </div>
+                    <div class="lg:col-span-1">
+                        <label for="tx-type" class="block text-sm font-medium">구분</label>
+                        <select id="tx-type">
+                            <option value="buy">매수</option>
+                            <option value="sell">매도</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="tx-quantity" class="block text-sm font-medium">수량</label>
+                        <input type="number" id="tx-quantity" required min="1" placeholder="10">
+                    </div>
+                    <div>
+                        <label for="tx-price" class="block text-sm font-medium">단가</label>
+                        <input type="number" id="tx-price" required min="0" placeholder="70.00" step="0.01">
+                    </div>
+                    <div class="lg:col-span-1">
+                        <label for="tx-currency" class="block text-sm font-medium">통화</label>
+                        <select id="tx-currency">
+                            <option value="KRW">KRW</option>
+                            <option value="USD">USD</option>
+                            <option value="JPY">JPY</option>
+                            <option value="EUR">EUR</option>
+                            </select>
+                    </div>
+                    <div class="lg:col-span-1">
+                        <label for="tx-exchange-rate" class="block text-sm font-medium">거래시점 환율</label>
+                        <input type="number" id="tx-exchange-rate" placeholder="1300.00" min="0" step="0.0001">
+                        <p class="text-xs text-gray-500 mt-1">KRW 기준. 예: USD 1300.00, JPY 9.00 (1엔당)</p>
+                    </div>
+                    <div class="lg:col-span-1">
+                        <button type="submit" class="btn w-full">거래 추가</button>
+                    </div>
+                </form>
+            </section>
+
+            <section class="card p-6">
+                <h2 class="text-xl font-bold mb-4">📜 전체 거래 내역</h2>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead>
+                            <tr>
+                                <th>거래일</th>
+                                <th>종목명</th>
+                                <th>구분</th>
+                                <th>수량</th>
+                                <th>단가</th>
+                                <th>통화</th>
+                                <th>거래시점 환율</th>
+                                <th>거래금액 (KRW)</th>
+                                <th>실현손익 (KRW)</th>
+                                <th>삭제</th>
+                            </tr>
+                        </thead>
+                        <tbody id="transaction-history-body">
+                            </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+
+        <footer class="text-center text-gray-500 mt-12">
+            <p>&copy; 2025 대화형 주식매매일지. All rights reserved.</p>
+        </footer>
+    </div>
+    
+    <div id="modal-backdrop" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex justify-center items-center p-4">
+        <div id="modal" class="bg-white rounded-lg shadow-xl p-6 w-11/12 max-w-sm">
+            <p id="modal-message" class="text-gray-800 mb-6 text-center">알림 메시지</p>
+            <div class="flex justify-end space-x-4">
+                <button id="modal-cancel" class="btn bg-gray-300 hover:bg-gray-400 text-gray-800">취소</button>
+                <button id="modal-confirm" class="btn">확인</button>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- DATA STORAGE ---
+        let transactions = JSON.parse(localStorage.getItem('stockTransactions')) || [
+            // Sample Data (currency and exchangeRate now mandatory for foreign stocks)
+            { id: 1, date: '2024-01-05', name: '삼성전자', type: 'buy', quantity: 10, price: 75000, currency: 'KRW', exchangeRate: 1 },
+            { id:
