@@ -215,7 +215,7 @@
                             </tr>
                         </thead>
                         <tbody id="transaction-history-body">
-                            </tbody>
+                                </tbody>
                     </table>
                 </div>
             </section>
@@ -529,7 +529,7 @@
             const transactionHistoryBody = document.getElementById('transaction-history-body');
             transactionHistoryBody.innerHTML = '';
             if (processedTransactions.length === 0) {
-                 transactionHistoryBody.innerHTML = `<tr><td colspan="10" class="text-center py-4 text-gray-500">거래 내역이 없습니다.</td></tr>`;
+                   transactionHistoryBody.innerHTML = `<tr><td colspan="10" class="text-center py-4 text-gray-500">거래 내역이 없습니다.</td></tr>`;
             } else {
                 [...processedTransactions].reverse().forEach(tx => {
                     const row = document.createElement('tr');
@@ -611,83 +611,100 @@
                 };
                 transactions.push(newTx);
                 
-                // Update currentPrices for this stock, assuming its latest transaction price/currency/rate
-                currentPrices[txName] = { price: txPrice, currency: txCurrency, exchangeRate: txExchangeRate };
+                // Clear form fields after submission
+                e.target.reset(); 
+                document.getElementById('tx-date').valueAsDate = new Date(); // Reset date to today
+                
+                // Update `currentPrices` if adding a new stock not previously tracked
+                if (!currentPrices[txName]) {
+                    currentPrices[txName] = { price: txPrice, currency: txCurrency, exchangeRate: txExchangeRate };
+                } else if (txType === 'buy') {
+                    // Update current price in `currentPrices` only on buy, to reflect latest known price, 
+                    // but allow manual override in portfolio table.
+                    // This logic can be adjusted based on desired behavior.
+                    currentPrices[txName].price = txPrice;
+                    currentPrices[txName].currency = txCurrency;
+                    currentPrices[txName].exchangeRate = txExchangeRate;
+                }
 
-                e.target.reset();
-                document.getElementById('tx-date').valueAsDate = new Date();
-                document.getElementById('tx-currency').value = 'KRW'; // Reset currency to default
-                document.getElementById('tx-exchange-rate').value = ''; // Clear exchange rate
                 render();
             } else {
-                showModal("모든 필수 필드를 올바르게 입력해주세요.", 'alert');
+                showModal("모든 필수 입력값을 올바르게 채워주세요.", 'alert');
             }
         });
 
-        // Event listener for currency select in transaction form (to hide/show exchange rate input)
-        document.getElementById('tx-currency').addEventListener('change', (e) => {
-            render(); // Re-render to apply visibility logic
-        });
-
-
+        // Event listener for deleting a transaction
         document.getElementById('transaction-history-body').addEventListener('click', (e) => {
-            if (e.target.matches('button.btn-danger')) {
-                const txId = parseInt(e.target.dataset.id);
+            if (e.target.tagName === 'BUTTON' && e.target.classList.contains('btn-danger')) {
+                const txIdToDelete = parseInt(e.target.dataset.id);
                 showModal('정말로 이 거래 내역을 삭제하시겠습니까?', 'confirm', () => {
-                   transactions = transactions.filter(tx => tx.id !== txId);
-                   render();
+                    transactions = transactions.filter(tx => tx.id !== txIdToDelete);
+                    render();
                 });
             }
         });
 
-        // Event listener for changes in portfolio table (current price, currency, exchange rate)
+        // Event listener for updating current price/exchange rate in portfolio table
         document.getElementById('portfolio-body').addEventListener('change', (e) => {
-            const stockName = e.target.dataset.name;
-            const field = e.target.dataset.field;
+            const target = e.target;
+            const stockName = target.dataset.name;
+            const field = target.dataset.field;
 
-            if (stockName) {
-                // Initialize currentPrices entry if it doesn't exist
+            if (stockName && field) {
                 if (!currentPrices[stockName]) {
-                    currentPrices[stockName] = { price: 0, currency: 'KRW', exchangeRate: 1 };
+                    // Initialize if stock wasn't in currentPrices (e.g., from old data or manual addition)
+                    const stockInPortfolio = calculateState().portfolioArray.find(s => s.name === stockName);
+                    if (stockInPortfolio) {
+                        currentPrices[stockName] = { 
+                            price: stockInPortfolio.currentPrice, 
+                            currency: stockInPortfolio.currency, 
+                            exchangeRate: stockInPortfolio.currentExchangeRate 
+                        };
+                    } else {
+                        // Fallback, should ideally not happen if stockName is valid
+                        currentPrices[stockName] = { price: 0, currency: 'KRW', exchangeRate: 1 };
+                    }
                 }
 
                 if (field === 'price') {
-                    const newPrice = parseFloat(e.target.value);
-                    if (!isNaN(newPrice) && newPrice >= 0) {
-                        currentPrices[stockName].price = newPrice;
-                    } else {
-                        showModal("유효한 현재 가격을 입력해주세요.", 'alert');
-                        return;
-                    }
+                    currentPrices[stockName].price = parseFloat(target.value);
                 } else if (field === 'currency') {
-                    const newCurrency = e.target.value;
-                    currentPrices[stockName].currency = newCurrency;
-                    if (newCurrency === 'KRW') {
+                    currentPrices[stockName].currency = target.value;
+                    // If currency changes to KRW, set exchange rate to 1 and hide input
+                    if (target.value === 'KRW') {
                         currentPrices[stockName].exchangeRate = 1;
+                        // Find the exchange rate input for this row and hide it
+                        const row = target.closest('tr');
+                        const exchangeRateInput = row.querySelector(`input[data-field="exchangeRate"]`);
+                        if (exchangeRateInput) {
+                            exchangeRateInput.value = 1;
+                            exchangeRateInput.classList.add('hidden');
+                        }
                     } else {
-                        // If switching to a foreign currency, clear or prompt for exchange rate
-                        // It's good to keep the last entered rate, or clear it if it's 1 from KRW
-                        if (currentPrices[stockName].exchangeRate === 1 && newCurrency !== 'KRW') {
-                            currentPrices[stockName].exchangeRate = 0; // Or some placeholder
+                        // If currency changes to non-KRW, unhide exchange rate input if it was hidden
+                        const row = target.closest('tr');
+                        const exchangeRateInput = row.querySelector(`input[data-field="exchangeRate"]`);
+                        if (exchangeRateInput) {
+                            exchangeRateInput.classList.remove('hidden');
+                            // Prompt for exchange rate if not set or invalid for new currency
+                            if (isNaN(currentPrices[stockName].exchangeRate) || currentPrices[stockName].exchangeRate <= 0) {
+                                showModal(`'${stockName}'의 '${target.value}' 환율을 입력해주세요.`, 'alert');
+                            }
                         }
                     }
                 } else if (field === 'exchangeRate') {
-                    const newExchangeRate = parseFloat(e.target.value);
-                    if (!isNaN(newExchangeRate) && newExchangeRate >= 0) {
-                        currentPrices[stockName].exchangeRate = newExchangeRate;
-                    } else {
-                        showModal("유효한 현재 환율을 입력해주세요.", 'alert');
-                        return;
-                    }
+                    currentPrices[stockName].exchangeRate = parseFloat(target.value);
                 }
                 render();
             }
         });
-        
-        // --- INITIALIZATION ---
+
+        // Initialize on load
         initCharts();
-        document.getElementById('tx-date').valueAsDate = new Date(); // Set default date to today
-        render(); // Initial render to populate tables and charts
+        render();
+
+        // Set default date to today
+        document.getElementById('tx-date').valueAsDate = new Date();
     });
     </script>
 </body>
